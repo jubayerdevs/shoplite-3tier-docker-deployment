@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShopLite | Product Catalogue</title>
+  <style>
+    :root { font-family: Inter, Arial, sans-serif; color: #172033; background: #f4f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: #173b72; color: white; padding: 24px max(5vw, 20px); }
+    header h1 { margin: 0 0 6px; font-size: 30px; }
+    header p { margin: 0; color: #d8e5fb; }
+    main { width: min(1000px, 92vw); margin: 28px auto; display: grid; grid-template-columns: 320px 1fr; gap: 22px; }
+    .panel { background: white; border: 1px solid #e3e9f2; border-radius: 14px; padding: 22px; box-shadow: 0 5px 18px #20395d0b; }
+    h2 { margin: 0 0 18px; font-size: 20px; }
+    label { display: block; font-size: 13px; font-weight: 700; margin: 13px 0 6px; color: #42516a; }
+    input, textarea { width: 100%; padding: 11px 12px; border: 1px solid #ccd6e4; border-radius: 8px; font: inherit; }
+    textarea { min-height: 86px; resize: vertical; }
+    button { border: 0; border-radius: 8px; background: #2463d3; color: white; padding: 11px 15px; font-weight: 700; cursor: pointer; }
+    button:hover { background: #174fae; }
+    .wide { width: 100%; margin-top: 16px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .toolbar h2 { margin: 0; }
+    .products { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+    .product { border: 1px solid #e4eaf2; border-radius: 11px; padding: 16px; background: #fbfcfe; }
+    .product h3 { margin: 0 0 8px; font-size: 17px; }
+    .price { color: #17613b; font-weight: 800; margin: 0 0 8px; }
+    .description { color: #617087; font-size: 14px; line-height: 1.5; margin: 0; }
+    #message { min-height: 20px; color: #b42318; font-size: 13px; margin-top: 10px; }
+    .empty { color: #6b778c; background: #f8fafc; border: 1px dashed #cbd5e1; padding: 24px; border-radius: 10px; text-align: center; grid-column: 1/-1; }
+    footer { text-align: center; color: #7b8798; font-size: 12px; padding: 10px 20px 30px; }
+    @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ShopLite 🛍️</h1>
+    <p>A simple product catalogue powered by Node.js, MySQL and Docker.</p>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Add a product</h2>
+      <form id="productForm">
+        <label for="name">Product name</label>
+        <input id="name" name="name" maxlength="150" required placeholder="e.g. Wireless Mouse">
+        <label for="price">Price (৳)</label>
+        <input id="price" name="price" type="number" min="0.01" step="0.01" required placeholder="e.g. 850">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" maxlength="500" placeholder="Short product description"></textarea>
+        <button class="wide" type="submit">Add product</button>
+        <div id="message" role="status"></div>
+      </form>
+    </section>
+    <section class="panel">
+      <div class="toolbar">
+        <h2>Products</h2>
+        <button id="refreshButton" type="button">Refresh</button>
+      </div>
+      <div id="products" class="products"><div class="empty">Loading products…</div></div>
+    </section>
+  </main>
+  <footer>ShopLite demo application · API requests are routed through Nginx</footer>
+  <script>
+    const productsElement = document.getElementById("products");
+    const messageElement = document.getElementById("message");
+    const form = document.getElementById("productForm");
+
+    async function loadProducts() {
+      productsElement.replaceChildren();
+      try {
+        const response = await fetch("/api/products");
+        if (!response.ok) throw new Error("API returned HTTP " + response.status);
+        const products = await response.json();
+        if (!products.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "No products yet. Add your first product using the form.";
+          productsElement.appendChild(empty);
+          return;
+        }
+        for (const product of products) {
+          const card = document.createElement("article");
+          card.className = "product";
+          const title = document.createElement("h3");
+          title.textContent = product.name;
+          const price = document.createElement("p");
+          price.className = "price";
+          price.textContent = "৳" + Number(product.price).toFixed(2);
+          const description = document.createElement("p");
+          description.className = "description";
+          description.textContent = product.description || "No description provided.";
+          card.append(title, price, description);
+          productsElement.appendChild(card);
+        }
+      } catch (error) {
+        const message = document.createElement("div");
+        message.className = "empty";
+        message.textContent = "Could not load products: " + error.message;
+        productsElement.appendChild(message);
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      messageElement.textContent = "";
+      const product = {
+        name: document.getElementById("name").value.trim(),
+        price: Number(document.getElementById("price").value),
+        description: document.getElementById("description").value.trim()
+      };
+      if (!product.name || !Number.isFinite(product.price) || product.price <= 0) {
+        messageElement.textContent = "Enter a product name and a price greater than zero.";
+        return;
+      }
+      try {
+        const response = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(product)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Could not add product.");
+        form.reset();
+        messageElement.style.color = "#17613b";
+        messageElement.textContent = "Product added successfully.";
+        await loadProducts();
+      } catch (error) {
+        messageElement.style.color = "#b42318";
+        messageElement.textContent = error.message;
+      }
+    });
+
+    document.getElementById("refreshButton").addEventListener("click", loadProducts);
+    loadProducts();
+  </script>
+</body>
+</html>
